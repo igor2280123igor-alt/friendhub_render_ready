@@ -22,9 +22,16 @@ const chatTitle = document.getElementById("chat-title");
 const chatSubtitle = document.getElementById("chat-subtitle");
 
 const callButton = document.getElementById("call-button");
+const muteButton = document.getElementById("mute-button");
 const hangupButton = document.getElementById("hangup-button");
 const callStatus = document.getElementById("call-status");
 const callStatusText = document.getElementById("call-status-text");
+
+// модалка входящего звонка
+const incomingBackdrop = document.getElementById("incoming-call-backdrop");
+const incomingFromEl = document.getElementById("incoming-call-from");
+const incomingAcceptBtn = document.getElementById("incoming-call-accept");
+const incomingRejectBtn = document.getElementById("incoming-call-reject");
 
 const NICK_KEY = "friendhub_nickname";
 
@@ -37,12 +44,14 @@ let unreadChats = new Set();
 let typingSendTimeout = null;
 let typingViewTimeout = null;
 
-// WebRTC
+// WebRTC / звонки
 let inCall = false;
 let callId = null;
 let localStream = null;
 let peers = {};
 let remoteAudios = {};
+let incomingCall = null;
+let isMuted = false;
 
 function chatKey(type, id) {
   return type + ":" + id;
@@ -103,7 +112,9 @@ function saveNickname() {
   }
   updateNickPill();
   if (activeChat.type === "pm" && activeChat.id === currentNick) {
-    setActiveGroup(groups[0]?.id, groups[0]?.name);
+    if (groups[0]) {
+      setActiveGroup(groups[0].id, groups[0].name);
+    }
   }
 }
 
@@ -305,13 +316,15 @@ function updateInputVisibility() {
   if (isNews) {
     chatInputWrap.style.display = "none";
     typingIndicator.textContent = "";
-    chatSubtitle.textContent = "Канал только для чтения. Новости публикует администратор.";
+    chatSubtitle.textContent =
+      "Канал только для чтения. Новости публикует администратор.";
   } else if (activeChat.type === "group") {
     chatInputWrap.style.display = "";
     chatSubtitle.textContent = "Групповой чат";
   } else if (activeChat.type === "pm") {
     chatInputWrap.style.display = "";
-    chatSubtitle.textContent = "Переписка только между вами и " + activeChat.id;
+    chatSubtitle.textContent =
+      "Переписка только между вами и " + activeChat.id;
   }
 }
 
@@ -333,7 +346,8 @@ function maybeEndCallOnChatSwitch(newChatType, newChatId) {
 function setActiveGroup(groupId, groupName) {
   maybeEndCallOnChatSwitch("group", groupId);
   activeChat = { type: "group", id: groupId, label: groupName };
-  chatTitle.textContent = groupId === "news" ? "Новости" : "#" + (groupName || "группа");
+  chatTitle.textContent =
+    groupId === "news" ? "Новости" : "#" + (groupName || "группа");
   clearUnreadForActive();
   updateInputVisibility();
   updateCallUI();
@@ -446,15 +460,17 @@ function notifyTyping() {
 
 textInput.addEventListener("input", notifyTyping);
 
-// WebRTC
+// ---- ЗВОНКИ / WebRTC ----
 
 function updateCallUI() {
   if (inCall && callId) {
     callButton.style.display = "none";
     hangupButton.style.display = "";
+    muteButton.style.display = "";
     callStatus.style.display = "block";
     if (activeChat.type === "group") {
-      callStatusText.textContent = "Групповой звонок в группе " + (activeChat.label || "");
+      callStatusText.textContent =
+        "Групповой звонок в группе " + (activeChat.label || "");
     } else if (activeChat.type === "pm") {
       callStatusText.textContent = "Звонок с " + (activeChat.id || "");
     } else {
@@ -463,9 +479,26 @@ function updateCallUI() {
   } else {
     callButton.style.display = "";
     hangupButton.style.display = "none";
+    muteButton.style.display = "none";
     callStatus.style.display = "none";
     callStatusText.textContent = "";
   }
+
+  if (isMuted) {
+    muteButton.textContent = "🔇 Микрофон выкл";
+  } else {
+    muteButton.textContent = "🔊 Микрофон вкл";
+  }
+}
+
+function setMuted(value) {
+  isMuted = value;
+  if (localStream) {
+    localStream.getAudioTracks().forEach((track) => {
+      track.enabled = !isMuted;
+    });
+  }
+  updateCallUI();
 }
 
 async function startCall() {
@@ -479,11 +512,13 @@ async function startCall() {
     alert("Сначала выберите группу или пользователя");
     return;
   }
+
   const id = getCallIdForActiveChat();
   if (!id) {
     alert("Нельзя начать звонок для этого чата");
     return;
   }
+
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (e) {
@@ -491,21 +526,35 @@ async function startCall() {
     alert("Не удалось получить доступ к микрофону. Проверь разрешения и HTTPS.");
     return;
   }
+
   inCall = true;
   callId = id;
+  isMuted = false;
   updateCallUI();
+
   socket.emit("webrtc:join", { callId: id });
+
+  if (activeChat.type === "pm") {
+    socket.emit("call:pm:start", {
+      to: activeChat.id,
+      callId: id,
+    });
+  }
 }
 
 function cleanupPeer(peerId) {
   const pc = peers[peerId];
   if (pc) {
-    try { pc.close(); } catch (e) {}
+    try {
+      pc.close();
+    } catch (e) {}
     delete peers[peerId];
   }
   const audio = remoteAudios[peerId];
   if (audio) {
-    try { audio.remove(); } catch (e) {}
+    try {
+      audio.remove();
+    } catch (e) {}
     delete remoteAudios[peerId];
   }
 }
@@ -525,20 +574,20 @@ function endCall() {
   }
   inCall = false;
   callId = null;
+  isMuted = false;
   updateCallUI();
 }
 
 callButton.addEventListener("click", startCall);
 hangupButton.addEventListener("click", endCall);
+muteButton.addEventListener("click", () => setMuted(!isMuted));
 
 function getPeerConnection(peerId, isInitiator) {
   let pc = peers[peerId];
   if (pc) return pc;
 
   pc = new RTCPeerConnection({
-    iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-    ],
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   });
 
   peers[peerId] = pc;
@@ -602,6 +651,8 @@ function getPeerConnection(peerId, isInitiator) {
   return pc;
 }
 
+// WebRTC socket handlers
+
 socket.on("webrtc:joined", ({ callId: joinedId, peers: peerIds }) => {
   if (!inCall || joinedId !== callId) return;
   (peerIds || []).forEach((peerId) => {
@@ -639,7 +690,77 @@ socket.on("webrtc:signal", async ({ callId: sigCallId, from, data }) => {
   }
 });
 
-// basic socket handlers
+// ----- ЛИЧНЫЕ ЗВОНКИ: входящий вызов -----
+
+socket.on("call:pm:incoming", ({ callId: incomingId, from }) => {
+  if (!currentNick) return;
+
+  if (inCall) {
+    socket.emit("call:pm:reject", {
+      to: from,
+      callId: incomingId,
+    });
+    return;
+  }
+
+  incomingCall = { callId: incomingId, from };
+  incomingFromEl.textContent = from;
+  incomingBackdrop.style.display = "flex";
+});
+
+socket.on("call:pm:rejected", ({ callId: rejectedId, from }) => {
+  if (callId && rejectedId === callId) {
+    alert(`Пользователь ${from} отклонил звонок`);
+    endCall();
+  }
+});
+
+incomingAcceptBtn.addEventListener("click", async () => {
+  if (!incomingCall) {
+    incomingBackdrop.style.display = "none";
+    return;
+  }
+  const { callId: incomingId, from } = incomingCall;
+  incomingCall = null;
+  incomingBackdrop.style.display = "none";
+
+  setActivePm(from);
+
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    console.error(e);
+    alert("Не удалось получить доступ к микрофону. Проверь разрешения и HTTPS.");
+    socket.emit("call:pm:reject", {
+      to: from,
+      callId: incomingId,
+    });
+    return;
+  }
+
+  inCall = true;
+  callId = incomingId;
+  isMuted = false;
+  updateCallUI();
+  socket.emit("webrtc:join", { callId: incomingId });
+});
+
+incomingRejectBtn.addEventListener("click", () => {
+  if (!incomingCall) {
+    incomingBackdrop.style.display = "none";
+    return;
+  }
+  const { callId: incomingId, from } = incomingCall;
+  incomingCall = null;
+  incomingBackdrop.style.display = "none";
+
+  socket.emit("call:pm:reject", {
+    to: from,
+    callId: incomingId,
+  });
+});
+
+// ---- базовые socket handlers ----
 
 socket.on("connect", () => {
   if (currentNick) {
@@ -692,7 +813,7 @@ socket.on("chat:newPm", (msg) => {
 
 socket.on("typing:update", (payload) => {
   if (!payload || !payload.isTyping) {
-    if (typingIndicator.textContent && (!payload || payload.isTyping === false)) {
+    if (typingIndicator.textContent) {
       typingIndicator.textContent = "";
     }
     return;
@@ -730,6 +851,7 @@ socket.on("typing:update", (payload) => {
   }, 2500);
 });
 
+// старт
 loadNickname();
 fetchGroups().catch(console.error);
 updateCallUI();
