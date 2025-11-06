@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>FriendHub — mini Discord</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    :root {
+      --bg: #020617;
+      --accent: #3b82f6;
+      --accent-soft: rgba(59,130,246,0.15);
+      --text: #f9fafb;
+      --text-muted: #9ca3af;
+      --border: #1f2937;
+      --bubble-me: #22c55e;
+      --bubble-other: #111827;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #1e293b 0, #020617 55%, #000 100%);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+    }
+    .app {
+      margin: auto;
+      width: min(1180px, 100%);
+      height: min(720px, 100%);
+      background: linear-gradient(135deg, rgba(15,23,42,0.98), rgba(8,14,30,0.98));
+      border-radius: 18px;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.65);
+      display: grid;
+      grid-template-columns: 270px 1fr;
+      overflow: hidden;
+      border: 1px solid rgba(148,163,184,0.15);
+    }
+    @media (max-width: 880px) {
+      .app {
+        height: 100vh;
+        width: 100%;
+        border-radius: 0;
+        grid-template-columns: 1fr;
+      }
+      .sidebar {
+        display: none;
+      }
+    }
+
+    .sidebar {
+      background: radial-gradient(circle at top left, #020617 0, #020617 65%);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .logo-icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 10px;
+      background: conic-gradient(from 140deg, #3b82f6, #22c55e, #a855f7, #3b82f6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #0b1120;
+      font-weight: 700;
+    }
+    .logo-title {
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      font-size: 15px;
+    }
+    .logo-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .nickname-row {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .nickname-label {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .nickname-input-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .nickname-input {
+      flex: 1;
+      background: rgba(15,23,42,0.9);
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text);
+      outline: none;
+    }
+    .nickname-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(59,130,246,0.35);
+    }
+    .nickname-status {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .nickname-pill {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(15,23,42,0.9);
+      border: 1px solid rgba(148,163,184,0.4);
+      color: var(--text-muted);
+    }
+
+    .sidebar-section {
+      padding: 10px 12px 8px;
+    }
+    .sidebar-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .sidebar-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-muted);
+    }
+    .counter-pill {
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: rgba(15,23,42,0.9);
+      border: 1px solid rgba(148,163,184,0.35);
+      color: var(--text-muted);
+    }
+    .groups-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .btn-create-group {
+      border: none;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      background: rgba(37,99,235,0.25);
+      color: var(--text);
+    }
+    .btn-create-group:hover {
+      background: rgba(59,130,246,0.5);
+    }
+
+    .list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-height: 170px;
+      overflow-y: auto;
+    }
+    .list-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 7px;
+      border-radius: 10px;
+      font-size: 13px;
+      color: #e5e7eb;
+      cursor: pointer;
+      transition: background 0.14s ease, transform 0.05s ease;
+      position: relative;
+    }
+    .list-item:hover {
+      background: rgba(30,64,175,0.3);
+      transform: translateY(-0.5px);
+    }
+    .list-item.active {
+      background: rgba(59,130,246,0.2);
+      border: 1px solid rgba(59,130,246,0.7);
+    }
+    .list-item.has-unread::after {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--danger);
+      margin-left: auto;
+    }
+    .list-badge {
+      width: 22px;
+      height: 22px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+    .badge-group {
+      background: rgba(37,99,235,0.35);
+    }
+    .badge-user {
+      background: rgba(22,163,74,0.25);
+    }
+    .list-label {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .user-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #22c55e;
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 8px 12px 11px;
+      font-size: 11px;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+    }
+    .sidebar-footer code {
+      background: rgba(15,23,42,0.9);
+      padding: 2px 5px;
+      border-radius: 6px;
+      border: 1px solid rgba(75,85,99,0.7);
+      font-size: 11px;
+    }
+
+    .chat {
+      display: flex;
+      flex-direction: column;
+      background: radial-gradient(circle at top right, #111827 0, #020617 60%);
+    }
+    .chat-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      backdrop-filter: blur(12px);
+      background: linear-gradient(to right, rgba(15,23,42,0.92), rgba(15,23,42,0.65));
+    }
+    .chat-title-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .chat-title {
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .chat-subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .chat-status-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .chat-status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: #22c55e;
+    }
+    .chat-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 12px;
+    }
+    .call-button {
+      font-size: 11px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.6);
+      background: rgba(15,23,42,0.9);
+      color: var(--text);
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    .call-button:hover {
+      background: rgba(37,99,235,0.4);
+    }
+    .call-button-danger {
+      border-color: rgba(248,113,113,0.8);
+      color: #fecaca;
+    }
+    .call-button-danger:hover {
+      background: rgba(248,113,113,0.35);
+    }
+
+    .chat-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 10px 14px 8px;
+      gap: 6px;
+    }
+    .messages {
+      flex: 1;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.9);
+      background: radial-gradient(circle at top left, rgba(15,23,42,0.96), rgba(2,6,23,0.98));
+      padding: 10px 10px 6px;
+      overflow-y: auto;
+      box-shadow: inset 0 0 0 1px rgba(15,23,42,0.75);
+    }
+    .messages-empty {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+      margin-top: 40px;
+    }
+    .msg-row {
+      margin-bottom: 6px;
+      display: flex;
+    }
+    .msg-bubble {
+      max-width: 72%;
+      padding: 7px 9px;
+      border-radius: 12px;
+      font-size: 13px;
+      position: relative;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+    }
+    .msg-bubble.me {
+      margin-left: auto;
+      border-bottom-right-radius: 4px;
+      background: linear-gradient(135deg, var(--bubble-me), #4ade80);
+      color: #022c22;
+    }
+    .msg-bubble.other {
+      margin-right: auto;
+      border-bottom-left-radius: 4px;
+      background: radial-gradient(circle at top left, var(--bubble-other), #020617);
+      color: #e5e7eb;
+      border: 1px solid rgba(30,64,175,0.8);
+    }
+    .msg-author {
+      font-weight: 600;
+      font-size: 11px;
+      margin-bottom: 2px;
+      opacity: 0.9;
+    }
+    .msg-text {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .msg-meta {
+      font-size: 10px;
+      color: rgba(148,163,184,0.9);
+      margin-top: 3px;
+      text-align: right;
+    }
+
+    .typing-indicator {
+      min-height: 16px;
+      font-size: 11px;
+      color: var(--text-muted);
+      padding-left: 6px;
+    }
+
+    .call-status {
+      min-height: 22px;
+      font-size: 11px;
+      color: #e5e7eb;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(59,130,246,0.5);
+      background: rgba(15,23,42,0.9);
+      align-self: flex-start;
+      display: none;
+    }
+
+    .chat-input-wrap {
+      padding-top: 0;
+    }
+    .chat-input-inner {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      background: rgba(15,23,42,0.96);
+      border-radius: 999px;
+      padding: 6px 8px 6px 12px;
+      border: 1px solid rgba(31,41,55,0.9);
+    }
+    .chat-input-inner:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(59,130,246,0.45);
+    }
+    .chat-input-field {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+    }
+    .chat-input-field::placeholder {
+      color: rgba(148,163,184,0.8);
+    }
+    .send-button {
+      border: none;
+      border-radius: 999px;
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), #22c55e);
+      color: #0b1120;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 8px 20px rgba(34,197,94,0.45);
+    }
+    .send-button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 24px rgba(34,197,94,0.55);
+    }
+    .send-icon {
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-row">
+          <div class="logo-icon">FH</div>
+          <div>
+            <div class="logo-title">FriendHub</div>
+            <div class="logo-sub">группы · ЛС · звонки</div>
+          </div>
+        </div>
+        <div class="nickname-row">
+          <div class="nickname-label">Ваш ник</div>
+          <div class="nickname-input-wrap">
+            <input id="nickname" class="nickname-input" placeholder="Например, Neo" />
+            <span id="nick-pill" class="nickname-pill">не установлен</span>
+          </div>
+          <div id="nick-status" class="nickname-status"></div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="groups-header">
+          <div class="sidebar-title">Группы</div>
+          <button id="create-group-btn" class="btn-create-group">+ Создать</button>
+          <div id="groups-count" class="counter-pill">0</div>
+        </div>
+        <ul id="groups-list" class="list"></ul>
+      </div>
+
+      <div class="sidebar-section" style="padding-top:4px;">
+        <div class="sidebar-title-row">
+          <div class="sidebar-title">Онлайн</div>
+          <div id="users-count" class="counter-pill">0</div>
+        </div>
+        <ul id="users-list" class="list"></ul>
+      </div>
+
+      <div class="sidebar-footer">
+        <div>FriendHub работает в браузере ✨</div>
+      </div>
+    </aside>
+
+    <main class="chat">
+      <header class="chat-header">
+        <div class="chat-title-wrap">
+          <div id="chat-title" class="chat-title">Выберите группу</div>
+          <div id="chat-subtitle" class="chat-subtitle">Сообщения появятся здесь</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="chat-status-row">
+            <div class="chat-status-dot"></div>
+            <span>Сервер онлайн</span>
+          </div>
+          <div class="chat-actions">
+            <button id="call-button" class="call-button">🔊 Звонок</button>
+            <button id="hangup-button" class="call-button call-button-danger" style="display:none;">✖ Сброс</button>
+          </div>
+        </div>
+      </header>
+      <section class="chat-main">
+        <div class="messages" id="messages">
+          <div class="messages-empty" id="messages-empty">
+            Пока ничего нет. Напишите первое сообщение или дождитесь новости от админа ✨
+          </div>
+        </div>
+        <div id="typing-indicator" class="typing-indicator"></div>
+        <div id="call-status" class="call-status">
+          <span id="call-status-text"></span>
+        </div>
+        <div class="chat-input-wrap" id="chat-input-wrap">
+          <form id="form">
+            <div class="chat-input-inner">
+              <input
+                id="text"
+                class="chat-input-field"
+                type="text"
+                placeholder="Напишите сообщение..."
+                autocomplete="off"
+              />
+              <button type="submit" class="send-button">
+                <span class="send-icon">➤</span>
+                <span>Отправить</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>
