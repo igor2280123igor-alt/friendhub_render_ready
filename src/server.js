@@ -118,14 +118,17 @@ app.get("/groups", (req, res) => {
 app.post("/groups", (req, res) => {
   let name = (req.body?.name || "").toString().trim();
   if (!name || name.length < 2 || name.length > 32) {
-    return res.status(400).json({ error: "Название группы должно быть от 2 до 32 символов" });
+    return res
+      .status(400)
+      .json({ error: "Название группы должно быть от 2 до 32 символов" });
   }
 
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9а-яё_-]/gi, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "") || "group";
+  const slug =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9а-яё_-]/gi, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "") || "group";
 
   const id = slug + "-" + Date.now().toString(36);
 
@@ -291,6 +294,40 @@ io.on("connection", (socket) => {
     io.emit("typing:update", clean);
   });
 
+  // ----- ЛИЧНЫЕ ЗВОНКИ: оповещение о входящем вызове -----
+
+  // когда кто-то НАЧИНАЕТ звонок в ЛС
+  socket.on("call:pm:start", ({ to, callId }) => {
+    const from = socket.data.nick;
+    if (!from || !to || !callId) return;
+
+    const toSockets = onlineUsers.get(to);
+    if (!toSockets) return;
+
+    for (const sid of toSockets) {
+      io.to(sid).emit("call:pm:incoming", {
+        callId,
+        from,
+      });
+    }
+  });
+
+  // когда второй ОТКЛОНЯЕТ звонок
+  socket.on("call:pm:reject", ({ to, callId }) => {
+    const from = socket.data.nick;
+    if (!from || !to || !callId) return;
+
+    const toSockets = onlineUsers.get(to);
+    if (!toSockets) return;
+
+    for (const sid of toSockets) {
+      io.to(sid).emit("call:pm:rejected", {
+        callId,
+        from,
+      });
+    }
+  });
+
   // WebRTC signalling
   socket.on("webrtc:join", ({ callId }) => {
     if (!callId) return;
@@ -302,7 +339,10 @@ io.on("connection", (socket) => {
     const peers = [...room].filter((id) => id !== socket.id);
     socket.emit("webrtc:joined", { callId, peers });
 
-    socket.to(callId).emit("webrtc:peer-joined", { callId, socketId: socket.id });
+    socket.to(callId).emit("webrtc:peer-joined", {
+      callId,
+      socketId: socket.id,
+    });
     console.log("socket", socket.id, "joined call", callId);
   });
 
@@ -312,7 +352,10 @@ io.on("connection", (socket) => {
     if (socket.data.calls) {
       socket.data.calls.delete(callId);
     }
-    socket.to(callId).emit("webrtc:peer-left", { callId, socketId: socket.id });
+    socket.to(callId).emit("webrtc:peer-left", {
+      callId,
+      socketId: socket.id,
+    });
     console.log("socket", socket.id, "left call", callId);
   });
 
