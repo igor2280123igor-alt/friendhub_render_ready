@@ -502,6 +502,7 @@
           </div>
           <div class="chat-actions">
             <button id="call-button" class="call-button">🔊 Звонок</button>
+            <button id="mute-button" class="call-button" style="display:none;">🔇 Микрофон</button>
             <button id="hangup-button" class="call-button call-button-danger" style="display:none;">✖ Сброс</button>
           </div>
         </div>
@@ -535,6 +536,59 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <!-- Модалка входящего звонка -->
+  <div id="incoming-call-backdrop" style="display:none;
+       position:fixed; inset:0;
+       background:rgba(15,23,42,0.7);
+       backdrop-filter:blur(6px);
+       z-index:50;
+       align-items:center; justify-content:center;">
+    <div id="incoming-call-card" style="
+         margin:auto;
+         width: min(320px, 90%);
+         background: linear-gradient(145deg, #020617, #020617);
+         border-radius: 16px;
+         border: 1px solid rgba(148,163,184,0.5);
+         box-shadow: 0 20px 60px rgba(0,0,0,0.75);
+         padding: 14px 16px 12px;
+         color: #e5e7eb;
+         font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+        <div style="
+             width:32px; height:32px; border-radius:999px;
+             background: radial-gradient(circle at 30% 0%, #22c55e, #16a34a);
+             display:flex; align-items:center; justify-content:center;
+             font-size:16px;">📞</div>
+        <div>
+          <div style="font-size:13px; text-transform:uppercase; letter-spacing:0.12em; color:#9ca3af;">Входящий звонок</div>
+          <div id="incoming-call-from" style="font-size:15px; font-weight:600;">От неизвестного</div>
+        </div>
+      </div>
+      <div style="font-size:12px; color:#9ca3af; margin-bottom:10px;">
+        Пользователь пытается позвонить вам в личные сообщения.
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button id="incoming-call-reject" style="
+                border-radius:999px;
+                border:1px solid rgba(248,113,113,0.9);
+                background:rgba(127,29,29,0.7);
+                color:#fecaca;
+                padding:6px 12px;
+                font-size:12px;
+                cursor:pointer;">Отклонить</button>
+        <button id="incoming-call-accept" style="
+                border-radius:999px;
+                border:none;
+                background:linear-gradient(135deg,#22c55e,#4ade80);
+                color:#022c22;
+                padding:6px 14px;
+                font-size:12px;
+                font-weight:600;
+                cursor:pointer;">Принять</button>
+      </div>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
